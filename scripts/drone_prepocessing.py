@@ -93,7 +93,7 @@ def process_one_frame(
     # Inter polate data from original camera grid to ground range grid using linear interpolation
     data_interp = griddata((x2d_grnd.flatten(), y2d_grnd.flatten()), data.flatten(),
                            (x2d_reg.flatten(),y2d_reg.flatten()), method=interp_method).reshape(x2d_reg.shape)
-    # Correct for sun glint
+    # Correct for sun glint using gaussian filter
     if kernel_size is not None:
         glint = gaussian_filter(data_interp, sigma=kernel_size)
         data_corrected = data_interp/glint
@@ -106,9 +106,17 @@ def process_one_frame(
 os.makedirs(DIR_OUT, exist_ok=True)
 # input files
 files_in = list(DIR_IN.glob('*.png'))
+num = files_in[0].parts[-2].split("_")[-1]
+out_fname = f'{NAME_OUT}_band{BAND}_sub{SUBSAMPLING}_res{RES_REG}_{METHOD}_kernel{KERNEL_SIZE}_dt{TIME_STEP}s_{num}.nc'
+dst = DIR_OUT / out_fname
+if dst.exists():
+    dst.unlink()
 
+# Stack processed frames
+data_stack = []
+# Track processing time
+start = datetime.now()
 for i in range(len(files_in)):
-    start = datetime.now()
     print(f'{i + 1} / {len(files_in)}', end=' | ')
     # Preprocess drone frame
     x, y, data = process_one_frame(
@@ -120,23 +128,20 @@ for i in range(len(files_in)):
         kernel_size=KERNEL_SIZE,
         interp_method=METHOD
     )
-    num = f'{files_in[i].parts[-2].split("_")[-1]}_{i:03d}'
-
-    out_fname = f'{NAME_OUT}_band{BAND}_sub{SUBSAMPLING}_res{RES_REG}_{METHOD}_kernel{KERNEL_SIZE}_dt{TIME_STEP}s_{num}.nc'
-    dst = DIR_OUT / out_fname
-    if dst.exists():
-        dst.unlink()
-    print(out_fname, end=' | ')
-    # Save to netcdf
-    ds = nc.Dataset(dst, mode='w')
-    ds.createDimension('time', 0)
-    ds.createDimension('x', x.size)
-    ds.createDimension('y', y.size)
-    var = ds.createVariable('time', 'f4', dimensions=('time'))
-    var[:] = i * TIME_STEP
-    var = ds.createVariable('data', 'f8', dimensions=('time','y','x'))
-    var[:] = data[np.newaxis,:,:]
-    ds.close()
+    # Add procesed data to the stack
+    data_stack.append(data)
     print(f'{datetime.now() - start}', end='\r')
+
+print(out_fname)
+# Save to netcdf
+ds = nc.Dataset(dst, mode='w')
+ds.createDimension('time', 3) #len(files_in))
+ds.createDimension('x', x.size)
+ds.createDimension('y', y.size)
+var = ds.createVariable('time', 'f4', dimensions=('time'))
+var[:] =  np.arange(3) #np.arange(len(files_in)) * TIME_STEP
+var = ds.createVariable('data', 'f8', dimensions=('time','y','x'))
+var[:] = data_stack
+ds.close()
           
 print('DONE')
