@@ -135,11 +135,11 @@ for i in range(len(files_in)):
 print(out_fname)
 # Save to netcdf
 ds = nc.Dataset(dst, mode='w')
-ds.createDimension('time', 3) #len(files_in))
+ds.createDimension('time', len(files_in))
 ds.createDimension('x', x.size)
 ds.createDimension('y', y.size)
 var = ds.createVariable('time', 'f4', dimensions=('time'))
-var[:] =  np.arange(3) #np.arange(len(files_in)) * TIME_STEP
+var[:] =  np.arange(len(files_in)) * TIME_STEP
 var = ds.createVariable('data', 'f8', dimensions=('time','y','x'))
 var[:] = data_stack
 ds.close()
